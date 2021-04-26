@@ -31,7 +31,7 @@ def get_rare(ar):
         ar1 = ar[:idx1]
         ar2 = ar[idx1:idx2:3]
         ar3 = ar[idx2:idx3:30]
-        ar4 = ar[idx3::100]
+        ar4 = ar[idx3::300]
         if type(ar) == 'numpy.ndarray':
             return np.concatenate((ar1, ar2, ar3, ar4))
         else:
@@ -52,42 +52,13 @@ def get_rare(ar):
         return res
 
 
-def intersect_3D_horizontal_plane(point, ray, z_plain):
-    t = (z_plain - point[2]) / ray[2]
-    return point + t * ray
-
-
-def get_distance_on_horizontal_plane(a, b, point):
-    np_a = np.array(a)
-    np_b = np.array(b)
-    np_p = np.array(point)
-    length = np.linalg.norm
-    if np.dot(np_b - np_a, np_p - np_a) > 0:
-        if np.dot(np_a - np_b, np_p - np_b) > 0:
-            dx, dy = np_a - np_b
-            c = np_a[0] * np_b[1] - np_b[0] * np_a[1]
-            return abs(dy * np_p[0] - dx * np_p[1] + c) / length(np_b - np_a)
-        else:
-            return length(np_p - np_b)
-    else:
-        return length(np_p - np_a)
-
-
-def get_distance(segments, point):
-    distances  = []
-    for i in range(len(segments) - 1):
-        line = (segments[i], segments[i + 1])
-        distances.append(get_distance_on_horizontal_plane(*line, point))
-    return min(distances)
-
-
 # Начальные геометрические условия
-start_z_data = [15, 70, 90, 118, 170, 244, 268, 308]
-start_diameters_data = [91, 141, 156, 172, 199, 230, 236, 236]
+# start_z_data = [15, 70, 90, 118, 170, 244, 268, 308]
+# start_diameters_data = [91, 141, 156, 172, 199, 230, 236, 236]
 
-# start_z_data = [15, 80, 118, 258, 308]
+start_z_data = [15, 80, 118, 258, 308]
 start_z_data = [x - 15 for x in start_z_data]
-# start_diameters_data = [91, 150, 170, 236, 236]
+start_diameters_data = [91, 150, 170, 236, 236]
 start_r_data = [diam / 2 for diam in start_diameters_data]
 #z_data = [0, 15, 80, 118, 258, 308]
 #diameters_data = [91, 91, 150, 170, 236, 236]
@@ -203,8 +174,11 @@ z_plane = -175 # высота плоскости, в которой движет
 # curve_trajectory = [(x, y + shift) for x, y in zip(start_z_data, start_r_data)]
 # end_point = [(start_z_data[-1] + increasing_distance, extreme_y)]
 # trajectory_list = first_point + curve_trajectory + end_point
+
+# Итоговая траектория близка к эквидестанте и подобрана вручную, опираясь на внутреннее чутьё
 trajectory_list = [(-150, 0), (0, 70), (65, 90.0), (103, 95.0), (243, 118.0), (293, 118.0), (343, 118.0), (483, 95.0), (521, 90.0), (586, 70), (736, 0)]
 print('trajectory_list', trajectory_list)
+
 # -------------------------------------------------------------------------------------------
 # ------- ПОСТРОЕНИЕ 3D МОДЕЛИ --------------------------------------------------------------
 # -------------------------------------------------------------------------------------------
@@ -225,15 +199,42 @@ def cartesian_from_polar(r, np_fi, h):
     z = h
     return x, y, z
 
-def cartesian_from_polar_2(r, phi):
-    x = r * np.cos(phi)
-    y = r * np.sin(phi)
-    return(x, y)
 
 def inside(x, interval):
     if x >= interval[0] and x <= interval[1]:
         return True
     return False
+
+
+def intersection_plane(point, ray, z_plain):
+    t = (z_plain - point[2]) / ray[2]
+    return point + t * ray
+
+
+def get_distance_on_horizontal_plane(a, b, point):
+    np_a = np.array(a)
+    np_b = np.array(b)
+    np_p = np.array(point) if type(point) != 'numpy.ndarray' else point
+    np_p = np_p[:2] if len(np_p) > 2 else np_p
+    length = np.linalg.norm
+    if np.dot(np_b - np_a, np_p - np_a) > 0:
+        if np.dot(np_a - np_b, np_p - np_b) > 0:
+            dx, dy = np_a - np_b
+            c = np_a[0] * np_b[1] - np_b[0] * np_a[1]
+            return abs(dy * np_p[0] - dx * np_p[1] + c) / length(np_b - np_a)
+        else:
+            return length(np_p - np_b)
+    else:
+        return length(np_p - np_a)
+
+
+def get_distance(segments, point):
+    distances  = []
+    for i in range(len(segments) - 1):
+        line = (segments[i], segments[i + 1])
+        distances.append(get_distance_on_horizontal_plane(*line, point))
+    return min(distances)
+
 
 # Точки для построения поверхности вращения
 x1, y1, z1 = rotation_body(np_r_1_turn, np_z_1_turn)
@@ -262,63 +263,57 @@ border_2 = go.Scatter3d(x=x, y=y, z=z, mode='lines', line={'width': 10}, marker=
 borders = [border_1, border_2]
 borders_interval = [x1.tolist(), x2.tolist()]
 
-# Тестовые точки
-vectors = []
-max_distance = 0; # параметр исключительно для проверки результатов
-for i, item in enumerate(directions):
-    start_polar = item[:3]
-    end_polar = item[3:]
-    dfi = (end_polar - start_polar)[1]
 
+def get_intersect_point_exit_point_angle(start_polar, end_polar):
+    dfi = (end_polar - start_polar)[1]
     start_beta = radians(45)
     finish_beta = radians(170)
     steps = 200
     dbeta = (finish_beta - start_beta) / steps;
     min_distance = None
-    intersection_point = None
+    point_on_plain = None
     start_point = None
+    angle = start_beta
     for step in range(steps):
         beta = start_beta + step * dbeta;
         z1, y1, x1 = cartesian_from_polar(start_polar[0], beta, start_polar[2])
         z2, y2, x2 = cartesian_from_polar(end_polar[0], beta + dfi, end_polar[2])
         np_start = np.array((x1, y1, z1))
         np_end = np.array((x2, y2, z2))
-        v = np.stack((np_start, np_end)).T
-        x, y, z = v[0], v[1], v[2]
-        # vectors.append(go.Scatter3d(x=x, y=y, z=z, mode='lines', line={'width': 10}))
         np_ray = np_end - np_start
-        # if abs(np_ray[2]) < float(0.0001): 
-        #     print(i, step, np_ray[2])
-        #     continue
-        p = intersect_3D_horizontal_plane(np_start, np_ray, z_plane)
-        # print(p)
-        # v = np.stack((np_start, p)).T
-        # print(v)
-        # x, y, z = v[0], v[1], v[2]
-        # vectors.append(go.Scatter3d(x=x, y=y, z=z, mode='lines', line={'width': 10}))
-        huyna = p.tolist()
-        hren = (huyna[0], huyna[1])
-        d = get_distance(trajectory_list, hren)
+        intersection_point = intersection_plane(np_start, np_ray, z_plane)
+        d = get_distance(trajectory_list, intersection_point)
         if step == 0:
             min_distance = d
-            intersection_point = p
+            point_on_plain = intersection_point
             start_point = np_start
         else:
-            # min_distance = d if d < min_distance else min_distance
             if d < min_distance:
                 min_distance = d
-                intersection_point = p
+                point_on_plain = intersection_point
                 start_point = np_start
-                # print(intersection_point)
-    # print(min_distance)
-    max_distance = min_distance if min_distance > max_distance else max_distance
-    v = np.stack((start_point, intersection_point)).T
-    # print(v)
-    x, y, z = v[0], v[1], v[2]
-    color = 'cyan' if inside(intersection_point[0].tolist(), borders_interval) else 'coral'
-    vectors.append(go.Scatter3d(x=x, y=y, z=z, mode='lines', line={'width': 10}, opacity=0.5, marker={'color':color}))
-print('max_distance', max_distance)
+                angle = beta
+    return point_on_plain, start_point, angle, min_distance
 
+
+# Точки для построения векторов схода нити
+vectors = [] # Массив для построения линий схода нити в 3D
+thread_points = [] # Массив некоторых координат линий схода нити для последующего получения координат управлющих органов станка
+max_distance = 0; # Параметр исключительно для проверки результатов
+for i, item in enumerate(directions):
+    start_polar = item[:3]
+    end_polar = item[3:]
+    point_on_plain, start_point, angle, min_distance = get_intersect_point_exit_point_angle(start_polar, end_polar)
+    x, y, fi = point_on_plain[0].tolist(), point_on_plain[1].tolist(), angle
+    thread_points.append([x, y, fi])
+    v = np.stack((start_point, point_on_plain)).T
+    x, y, z = v[0], v[1], v[2]
+    color = 'cyan' if inside(point_on_plain[0].tolist(), borders_interval) else 'coral'
+    vectors.append(go.Scatter3d(x=x, y=y, z=z, mode='lines', line={'width': 10}, opacity=0.5, marker={'color':color}))
+    max_distance = min_distance if min_distance > max_distance else max_distance
+print('max_distance', max_distance) # параметр исключительно для проверки
+
+# Создание html файла 3D модели
 data = [surface, curve, trajectory, *borders, *vectors]
 fig = go.Figure(data=data)
 fig.update_layout(
@@ -335,97 +330,3 @@ fig.write_html('tmp.html', auto_open=True) # Для получения граф�
 # ------- ПОЛУЧАЕМ МАССИВ КООРДИНАТ УПРАВЛЯЮЩИХ ОРГАНОВ СТАНКА ------------------------------
 # -------------------------------------------------------------------------------------------
 
-def cartesian_from_polar_for_one_point(r, fi, h):
-    x = r * math.cos(fi)
-    y = r * math.sin(fi)
-    z = h
-    return x.tolist(), y.tolist(), z
-
-
-def intersect_3D(point, ray, point_on_plain, normal):
-    t = np.dot((point_on_plain - point), normal) / np.dot(ray, normal)
-    return point + t * ray
-
-
-
-vectors = []
-max_distance = 0; # параметр исключительно для проверки результатов
-for i, item in enumerate(directions[:3]):
-    start_polar = item[:3]
-    end_polar = item[3:]
-    dfi = (end_polar - start_polar)[1]
-    #     r = points[i][0]
-    # fi = points[i][1]
-    # z = points[i][2]
-    # dr = directions[i][0]
-    # dfi = directions[i][1]
-    dz = directions[i][2]
-    # start = np.array(cartesian_from_polar(*start_polar))
-    # end = np.array(cartesian_from_polar(*end_polar))
-    # vector = end - start
-    # # vector *= 50
-    # # end = start + vector
-    # v = np.stack((start, end), axis=1)
-    # x, y, z = v[0], v[1], v[2]
-
-    start_beta = radians(-80)
-    finish_beta = radians(45)
-    steps = 200
-    dbeta = (finish_beta - start_beta) / steps;
-    min_distance = None
-    for step in range(steps):
-        beta = start_beta + step * dbeta;
-        # y, z, x = cartesian_from_polar(start[0], beta, start[2]) # оси координат совпадают с осями зелёного станка
-        # ry, rz, rx = cartesian_from_polar(end[0], beta + dfi, end[2])
-        np_start = np.array(cartesian_from_polar(start_polar[0], beta, start_polar[2]))
-        np_end = np.array(cartesian_from_polar(end_polar[0], beta + dfi, end_polar[2]))
-        np_ray = np_end - np_start
-        if abs(np_ray[2]) < float(0.0001): 
-            print(i, step, np_ray[2])
-            continue
-        p = intersect_3D_horizontal_plane(np_start, np_ray, z_plane).tolist()
-        d = get_distance(trajectory_list  , (p[0], p[1]))
-        # print(d)
-        if step == 0:
-            min_distance = d
-        else:
-            min_distance = d if d < min_distance else min_distance
-        # print(beta,    min_distance)
-    max_distance = min_distance if min_distance > max_distance else max_distance
-    # if i % 1000 == 0: print(i, max_distance)
-# print('max_distance', max_distance)
-
-
-
-
-
-
-# for i in range(len(directions)):
-#     r = points[i][0]
-#     fi = points[i][1]
-#     z = points[i][2]
-#     dr = directions[i][0]
-#     dfi = directions[i][1]
-#     dz = directions[i][2]
-
-#     start_beta = radians(-80)
-#     finish_beta = radians(45)
-#     steps = 200
-#     dbeta = (finish_beta - start_beta) / steps;
-#     min_distance = None
-#     for step in range(steps):
-#         beta = start_beta + step * dbeta;
-#         y, z, x = cartesian_from_polar(r, beta, z) # оси координат совпадают с осями зелёного станка
-#         ry, rz, rx = cartesian_from_polar(dr, beta + dfi, dz)
-#         if abs(rz) < float(0.0001): 
-#             # print(i, step, rz)
-#             continue
-#         p = intersect_3D_horizontal_plane(np.array([x, y, z]), np.array([rx, ry, rz]), z_plane).tolist()
-#         d = get_distance(trajectory_list  , (p[0], p[1]))
-#         if step == 0:
-#             min_distance = d
-#         else:
-#             min_distance = d if d < min_distance else min_distance
-#     max_distance = min_distance if min_distance > max_distance else max_distance
-#     if i % 1000 == 0: print(i, max_distance)
-# print(max_distance)
